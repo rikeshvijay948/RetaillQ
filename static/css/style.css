@@ -1,0 +1,52 @@
+/* RetailIQ Custom Styles */
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* Active tab state */
+.tab-btn.active-tab {
+    background-color: #4f46e5;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+}
+
+/* Runway / DOI meter bar */
+.runway-meter-track {
+    height: 6px;
+    background-color: #334155;
+    border-radius: 9999px;
+    overflow: hidden;
+    position: relative;
+}
+
+.runway-meter-fill {
+    height: 100%;
+    border-radius: 9999px;
+    transition: width 0.4s ease-in-out;
+}
+
+/* Message pulse animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.25s ease-out forwards;
+}
