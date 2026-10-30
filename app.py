@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 import uvicorn
 
@@ -114,6 +114,29 @@ async def get_inventory():
 async def get_risks():
     """Returns products with imminent stockout risk sorted by runway urgency."""
     return analytics.get_stockout_risks()
+
+
+@app.get("/api/suppliers")
+async def get_suppliers():
+    """Returns supplier performance, lead times, and risk exposure metrics."""
+    return analytics.get_supplier_performance()
+
+
+@app.get("/api/inventory/summary")
+async def get_inventory_summary():
+    """Returns high-level executive inventory health summary and reorder valuation."""
+    return analytics.get_inventory_health_summary()
+
+
+@app.get("/api/export/purchase-orders")
+async def export_purchase_orders():
+    """Generates and downloads an RFC 4180-compliant CSV containing purchase orders for items needing replenishment."""
+    csv_data = analytics.generate_purchase_orders_csv()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=retailiq_purchase_orders.csv"}
+    )
 
 
 @app.post("/api/copilot/chat")

@@ -132,7 +132,19 @@ def classify_intent(query: str) -> Tuple[str, str, Dict[str, Any]]:
         }
         return intent, func_name, context
 
-    # 5. PRODUCT CATALOG LOOKUP (Specific product existence or inquiry)
+    # 5. SUPPLIER PERFORMANCE & RISK EXPOSURE
+    if any(k in q for k in ["supplier", "suppliers", "vendor", "vendors", "lead time", "lead times"]):
+        intent = "SUPPLIER_PERFORMANCE"
+        func_name = "analytics.get_supplier_performance()"
+        suppliers = analytics.get_supplier_performance()
+        context = {
+            "intent": intent,
+            "suppliers": suppliers,
+            "total_suppliers": len(suppliers)
+        }
+        return intent, func_name, context
+
+    # 6. PRODUCT CATALOG LOOKUP (Specific product existence or inquiry)
     candidate_name = extract_potential_product_name(query)
     if candidate_name or any(k in q for k in ["sell", "iphone", "iphones", "have", "stock of", "details for", "tell me about", "find product", "search for"]):
         prod_query = candidate_name if candidate_name else ("iPhone" if "iphone" in q else query)
@@ -147,7 +159,7 @@ def classify_intent(query: str) -> Tuple[str, str, Dict[str, Any]]:
         }
         return intent, func_name, context
 
-    # 6. CATEGORY PERFORMANCE
+    # 7. CATEGORY PERFORMANCE
     if any(k in q for k in ["category", "categories", "department", "by category", "margin by category"]):
         intent = "CATEGORY_PERFORMANCE"
         func_name = "analytics.get_category_performance()"
@@ -159,7 +171,7 @@ def classify_intent(query: str) -> Tuple[str, str, Dict[str, Any]]:
         }
         return intent, func_name, context
 
-    # 7. SALES TRENDS / TIME-SERIES
+    # 8. SALES TRENDS / TIME-SERIES
     if any(k in q for k in ["trend", "trends", "daily sales", "sales by day", "history", "timeline"]):
         intent = "SALES_TRENDS"
         func_name = "analytics.get_sales_by_day()"
@@ -171,7 +183,7 @@ def classify_intent(query: str) -> Tuple[str, str, Dict[str, Any]]:
         }
         return intent, func_name, context
 
-    # 8. DEFAULT / GENERAL OVERVIEW
+    # 9. DEFAULT / GENERAL OVERVIEW
     intent = "EXECUTIVE_OVERVIEW"
     func_name = "analytics.get_dashboard_metrics()"
     metrics = analytics.get_dashboard_metrics()
@@ -224,7 +236,7 @@ RESPONSE FORMAT (Valid JSON only):
         client = genai.Client(api_key=api_key)
         
         # Models to try in order of preference
-        models_to_try = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
+        models_to_try = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"]
         last_error = None
 
         for model_name in models_to_try:
@@ -504,7 +516,38 @@ def build_deterministic_answer(user_query: str, intent: str, verified_context: D
             "mode": "deterministic_fallback"
         }
 
-    # 8. DEFAULT: EXECUTIVE OVERVIEW
+    # 8. INTENT: SUPPLIER PERFORMANCE
+    if intent == "SUPPLIER_PERFORMANCE":
+        suppliers = verified_context.get("suppliers", [])
+        lines = []
+        evidence = []
+        for s in suppliers:
+            lines.append(
+                f"- **{s['supplier_name']}**: Supplies {s['product_count']} SKUs | Avg Lead Time: {s['avg_lead_time_days']}d | "
+                f"Revenue: **${s['total_revenue']:,.2f}** | Risk Exposure: `{s['risk_exposure']}` "
+                f"({s['critical_risk_skus']} critical SKUs, Suggested Reorder: {s['suggested_reorder_units']} units)"
+            )
+            evidence.append({
+                "supplier": s["supplier_name"],
+                "lead_time_days": s["avg_lead_time_days"],
+                "critical_skus": s["critical_risk_skus"],
+                "risk_exposure": s["risk_exposure"]
+            })
+        answer = (
+            f"### 🏭 Supplier Operational Performance & Risk Exposure\n\n"
+            + "\n".join(lines) +
+            f"\n\n**Operational Impact:** Suppliers marked with `CRITICAL` risk exposure supply items facing immediate stockout within $< 1$ day."
+        )
+        recommendation = "Review supplier lead times and dispatch emergency purchase orders to suppliers with CRITICAL exposure."
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "recommendation": recommendation,
+            "confidence": "HIGH",
+            "mode": "deterministic_fallback"
+        }
+
+    # 9. DEFAULT: EXECUTIVE OVERVIEW
     metrics = verified_context.get("dashboard_metrics") or analytics.get_dashboard_metrics()
     top_p = verified_context.get("top_product") or analytics.get_top_products(limit=1)[0]
     crit_count = verified_context.get("critical_risks_count", 4)

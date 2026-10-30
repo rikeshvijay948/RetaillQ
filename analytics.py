@@ -4,6 +4,8 @@ Performs all mathematical, inventory risk, and sales calculations in pure Python
 All facts are strictly verified and deterministic (Zero AI hallucination).
 """
 
+import io
+import csv
 import sqlite3
 from typing import Dict, List, Any, Optional
 from database import get_db_connection
@@ -231,6 +233,7 @@ def get_inventory_risks() -> List[Dict[str, Any]]:
             "avg_daily_sales": avg_daily_sales,
             "days_remaining": days_remaining,
             "risk_status": risk_status,
+            "lead_time_days": d.get("lead_time_days", 5),
         })
 
     conn.close()
@@ -521,4 +524,128 @@ def get_grounded_context_for_query(query: str = "") -> Dict[str, Any]:
         "categories": get_category_performance(),
         "sales_by_day": get_sales_by_day()[:7],  # Recent trend sample
     }
+
+
+# -------------------------------------------------------------------------
+# 7. Supplier Analytics & Purchase Order Automation
+# -------------------------------------------------------------------------
+def get_supplier_performance() -> List[Dict[str, Any]]:
+    """
+    Calculates operational and risk exposure metrics per supplier.
+    Aggregates product catalog counts, stock valuation, lead times,
+    revenue generated, and stockout threats per supplier.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 
+            p.supplier_name,
+            COUNT(DISTINCT p.id) as product_count,
+            COALESCE(SUM(p.current_stock), 0) as total_stock_units,
+            ROUND(COALESCE(SUM(p.current_stock * p.unit_cost), 0.0), 2) as inventory_valuation,
+            ROUND(AVG(p.lead_time_days), 1) as avg_lead_time_days,
+            COALESCE(SUM(s.quantity_sold), 0) as total_units_sold,
+            ROUND(COALESCE(SUM(s.revenue), 0.0), 2) as total_revenue
+        FROM products p
+        LEFT JOIN sales s ON p.id = s.product_id
+        GROUP BY p.supplier_name
+        ORDER BY total_revenue DESC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    # Cross-reference inventory risks to identify supplier risk exposure
+    inventory_items = get_inventory_health()
+    for row in rows:
+        sup_name = row["supplier_name"]
+        sup_items = [item for item in inventory_items if item["supplier_name"] == sup_name]
+        crit_items = [item for item in sup_items if item["risk_status"] == "CRITICAL"]
+        high_items = [item for item in sup_items if item["risk_status"] == "HIGH"]
+        reorder_units = sum(item["suggested_reorder_qty"] for item in sup_items)
+        reorder_cost = round(sum(item["reorder_estimated_cost"] for item in sup_items), 2)
+
+        row["critical_risk_skus"] = len(crit_items)
+        row["high_risk_skus"] = len(high_items)
+        row["suggested_reorder_units"] = reorder_units
+        row["suggested_reorder_cost"] = reorder_cost
+        row["risk_exposure"] = "CRITICAL" if len(crit_items) > 0 else ("HIGH" if len(high_items) > 0 else "STABLE")
+
+    return rows
+
+
+def generate_purchase_orders_csv() -> str:
+    """
+    Generates an RFC 4180-compliant CSV string containing purchase orders
+    for all products requiring replenishment, prioritized by runway urgency.
+    """
+    items = get_inventory_health()
+    reorder_items = [p for p in items if p["suggested_reorder_qty"] > 0]
+    # Sort by urgency: lowest days remaining first
+    reorder_items.sort(key=lambda x: (x["days_remaining"], -x["suggested_reorder_qty"]))
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "PO_Number",
+        "SKU",
+        "Product_Name",
+        "Category",
+        "Supplier_Name",
+        "Current_Stock",
+        "Reorder_Level",
+        "Days_Runway",
+        "Suggested_Reorder_Qty",
+        "Unit_Cost",
+        "Estimated_Total_Cost",
+        "Lead_Time_Days",
+        "Priority_Level"
+    ])
+
+    for idx, item in enumerate(reorder_items, 1):
+        po_num = f"PO-2026-{idx:04d}"
+        writer.writerow([
+            po_num,
+            item["sku"],
+            item["name"],
+            item["category"],
+            item["supplier_name"],
+            item["current_stock"],
+            item["reorder_level"],
+            item["days_remaining"],
+            item["suggested_reorder_qty"],
+            f"{item['unit_cost']:.2f}",
+            f"{item['reorder_estimated_cost']:.2f}",
+            item["lead_time_days"],
+            item["risk_status"]
+        ])
+
+    return output.getvalue()
+
+
+def get_inventory_health_summary() -> Dict[str, Any]:
+    """
+    Returns high-level executive inventory health statistics.
+    """
+    health = get_inventory_health()
+    total_skus = len(health)
+    crit = [p for p in health if p["risk_status"] == "CRITICAL"]
+    high = [p for p in health if p["risk_status"] == "HIGH"]
+    low = [p for p in health if p["risk_status"] == "LOW"]
+    healthy = [p for p in health if p["risk_status"] == "HEALTHY"]
+
+    total_reorder_qty = sum(p["suggested_reorder_qty"] for p in health)
+    total_reorder_cost = round(sum(p["reorder_estimated_cost"] for p in health), 2)
+
+    return {
+        "total_skus": total_skus,
+        "critical_skus_count": len(crit),
+        "high_risk_skus_count": len(high),
+        "low_risk_skus_count": len(low),
+        "healthy_skus_count": len(healthy),
+        "critical_products": [p["name"] for p in crit],
+        "total_suggested_reorder_units": total_reorder_qty,
+        "total_suggested_reorder_cost": total_reorder_cost,
+        "inventory_health_score_pct": round((len(healthy) / total_skus * 100), 1) if total_skus > 0 else 0.0
+    }
+
 
