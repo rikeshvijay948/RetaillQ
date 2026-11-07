@@ -128,6 +128,24 @@ async def get_inventory_summary():
     return analytics.get_inventory_health_summary()
 
 
+@app.get("/api/inventory/abc")
+async def get_abc_analysis():
+    """Returns Pareto ABC inventory classification (Class A 70%, Class B 20%, Class C 10%)."""
+    return analytics.get_abc_classification()
+
+
+@app.get("/api/inventory/eoq")
+async def get_eoq_analysis():
+    """Returns Wilson Economic Order Quantity (EOQ) and optimal batch frequencies for all SKUs."""
+    return analytics.get_eoq_analysis()
+
+
+@app.get("/api/inventory/turnover")
+async def get_inventory_turnover():
+    """Returns inventory turnover ratio, Days Sales of Inventory (DSI), and slow-moving SKU analysis."""
+    return analytics.get_inventory_turnover()
+
+
 @app.get("/api/export/purchase-orders")
 async def export_purchase_orders():
     """Generates and downloads an RFC 4180-compliant CSV containing purchase orders for items needing replenishment."""

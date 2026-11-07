@@ -144,7 +144,41 @@ def classify_intent(query: str) -> Tuple[str, str, Dict[str, Any]]:
         }
         return intent, func_name, context
 
-    # 6. PRODUCT CATALOG LOOKUP (Specific product existence or inquiry)
+    # 6. ABC PARETO CLASSIFICATION
+    if any(k in q for k in ["abc", "pareto", "class a", "class b", "class c", "80/20"]):
+        intent = "ABC_ANALYSIS"
+        func_name = "analytics.get_abc_classification()"
+        abc_data = analytics.get_abc_classification()
+        context = {
+            "intent": intent,
+            "abc_classification": abc_data
+        }
+        return intent, func_name, context
+
+    # 7. ECONOMIC ORDER QUANTITY (EOQ)
+    if any(k in q for k in ["eoq", "economic order", "optimal order", "batch size", "how much should we order", "reorder quantity"]):
+        intent = "ECONOMIC_ORDER_QUANTITY"
+        func_name = "analytics.get_eoq_analysis()"
+        eoq_data = analytics.get_eoq_analysis()
+        context = {
+            "intent": intent,
+            "eoq_analysis": eoq_data[:5],
+            "total_skus_analyzed": len(eoq_data)
+        }
+        return intent, func_name, context
+
+    # 8. INVENTORY TURNOVER & DEAD STOCK
+    if any(k in q for k in ["turnover", "inventory turnover", "slow moving", "dead stock", "dsi", "days sales of inventory"]):
+        intent = "INVENTORY_TURNOVER"
+        func_name = "analytics.get_inventory_turnover()"
+        turnover_data = analytics.get_inventory_turnover()
+        context = {
+            "intent": intent,
+            "turnover_metrics": turnover_data
+        }
+        return intent, func_name, context
+
+    # 9. PRODUCT CATALOG LOOKUP (Specific product existence or inquiry)
     candidate_name = extract_potential_product_name(query)
     if candidate_name or any(k in q for k in ["sell", "iphone", "iphones", "have", "stock of", "details for", "tell me about", "find product", "search for"]):
         prod_query = candidate_name if candidate_name else ("iPhone" if "iphone" in q else query)
@@ -547,7 +581,103 @@ def build_deterministic_answer(user_query: str, intent: str, verified_context: D
             "mode": "deterministic_fallback"
         }
 
-    # 9. DEFAULT: EXECUTIVE OVERVIEW
+    # 9. INTENT: ABC_ANALYSIS
+    if intent == "ABC_ANALYSIS":
+        abc = verified_context.get("abc_classification") or analytics.get_abc_classification()
+        summary = abc["summary"]
+        class_a_items = abc.get("class_a_products", [])
+        top_a_lines = [f"- **{p['name']}** (`{p['sku']}`): ${p['revenue']:,.2f} ({p['revenue_share_pct']}% of store rev)" for p in class_a_items[:5]]
+
+        answer = (
+            f"### 📊 Pareto ABC Inventory Classification\n\n"
+            f"Analysis of all **{abc['total_skus']} products** by cumulative revenue contribution:\n\n"
+            f"- **Class A (Strategic):** **{summary['class_a']['sku_count']} SKUs** generate **{summary['class_a']['revenue_share_pct']}%** of revenue (${summary['class_a']['revenue']:,.2f}).\n"
+            f"  *Strategy:* {summary['class_a']['strategy']}\n\n"
+            f"- **Class B (Moderate):** **{summary['class_b']['sku_count']} SKUs** generate **{summary['class_b']['revenue_share_pct']}%** of revenue (${summary['class_b']['revenue']:,.2f}).\n"
+            f"  *Strategy:* {summary['class_b']['strategy']}\n\n"
+            f"- **Class C (Routine):** **{summary['class_c']['sku_count']} SKUs** generate **{summary['class_c']['revenue_share_pct']}%** of revenue (${summary['class_c']['revenue']:,.2f}).\n"
+            f"  *Strategy:* {summary['class_c']['strategy']}\n\n"
+            f"**Top Class A Revenue Drivers:**\n"
+            + "\n".join(top_a_lines)
+        )
+        evidence = [
+            {"tier": "Class A", "skus": summary["class_a"]["sku_count"], "revenue_share_pct": summary["class_a"]["revenue_share_pct"]},
+            {"tier": "Class B", "skus": summary["class_b"]["sku_count"], "revenue_share_pct": summary["class_b"]["revenue_share_pct"]},
+            {"tier": "Class C", "skus": summary["class_c"]["sku_count"], "revenue_share_pct": summary["class_c"]["revenue_share_pct"]}
+        ]
+        recommendation = "Focus continuous daily replenishment controls on Class A items to secure 70% of store sales volume."
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "recommendation": recommendation,
+            "confidence": "HIGH",
+            "mode": "deterministic_fallback"
+        }
+
+    # 10. INTENT: ECONOMIC_ORDER_QUANTITY
+    if intent == "ECONOMIC_ORDER_QUANTITY":
+        eoq_items = verified_context.get("eoq_analysis") or analytics.get_eoq_analysis()
+        lines = []
+        evidence = []
+        for p in eoq_items[:5]:
+            lines.append(
+                f"- **{p['name']}** (`{p['sku']}`): Optimal EOQ batch = **{p['eoq_units']} units** "
+                f"({p['optimal_orders_per_year']} orders/yr, ~every {p['order_interval_days']} days)"
+            )
+            evidence.append({
+                "product": p["name"],
+                "annual_demand": p["annualized_demand"],
+                "eoq_units": p["eoq_units"],
+                "order_interval_days": p["order_interval_days"]
+            })
+        answer = (
+            f"### 📦 Economic Order Quantity (EOQ) Optimization\n\n"
+            f"EOQ balances fixed administrative purchase order fees ($35/order) against annual carrying costs (20% holding rate):\n\n"
+            + "\n".join(lines) +
+            f"\n\n**Operational Impact:** Ordering in EOQ batch sizes minimizes total combined procurement and holding expenses."
+        )
+        recommendation = "Align vendor purchase orders to calculated EOQ batch sizes instead of arbitrary lump-sum reorders."
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "recommendation": recommendation,
+            "confidence": "HIGH",
+            "mode": "deterministic_fallback"
+        }
+
+    # 11. INTENT: INVENTORY_TURNOVER
+    if intent == "INVENTORY_TURNOVER":
+        turnover = verified_context.get("turnover_metrics") or analytics.get_inventory_turnover()
+        ratio = turnover["annualized_inventory_turnover_ratio"]
+        dsi = turnover["days_sales_of_inventory_dsi"]
+        slow_count = turnover["slow_moving_skus_count"]
+        tied_up = turnover["slow_moving_capital_tied_up"]
+        benchmark = turnover["turnover_benchmark"]
+
+        answer = (
+            f"### 🔄 Inventory Turnover & Velocity Metrics\n\n"
+            f"- **Annualized Turnover Ratio:** **{ratio}x** (Benchmark: {benchmark})\n"
+            f"- **Days Sales of Inventory (DSI):** **{dsi} days** (average inventory holding duration)\n"
+            f"- **Slow-Moving SKUs ($>45$d runway or $<1$ sale/day):** **{slow_count} SKUs**\n"
+            f"- **Capital Tied Up in Slow Stock:** **${tied_up:,.2f}**\n\n"
+            f"**Efficiency Assessment:** A {ratio}x turnover indicates efficient inventory circulation with low risk of dead stock accumulation."
+        )
+        evidence = [
+            {"metric": "Annualized Turnover Ratio", "value": f"{ratio}x"},
+            {"metric": "Days Sales of Inventory", "value": f"{dsi} days"},
+            {"metric": "Slow-Moving SKUs", "value": slow_count},
+            {"metric": "Slow-Moving Capital", "value": f"${tied_up:,.2f}"}
+        ]
+        recommendation = "Review slow-moving products and run promotional bundles to liberate tied-up working capital."
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "recommendation": recommendation,
+            "confidence": "HIGH",
+            "mode": "deterministic_fallback"
+        }
+
+    # 12. DEFAULT: EXECUTIVE OVERVIEW
     metrics = verified_context.get("dashboard_metrics") or analytics.get_dashboard_metrics()
     top_p = verified_context.get("top_product") or analytics.get_top_products(limit=1)[0]
     crit_count = verified_context.get("critical_risks_count", 4)
@@ -663,14 +793,20 @@ def generate_copilot_response(user_query: str) -> Dict[str, Any]:
     if intent in ("RESTOCK_PRIORITIZATION", "CRITICAL_INVENTORY_ATTENTION"):
         followups = [
             "What are our top 5 products by revenue?",
-            "Which product has the highest revenue?",
-            "Do we sell iPhones?"
+            "What is our ABC inventory classification?",
+            "What are our recommended EOQ batch sizes?"
         ]
-    elif intent in ("TOP_PRODUCTS_RANKING", "HIGHEST_REVENUE_PRODUCT"):
+    elif intent in ("TOP_PRODUCTS_RANKING", "HIGHEST_REVENUE_PRODUCT", "ABC_ANALYSIS"):
         followups = [
             "Which products need attention today?",
-            "If I can only reorder two products today, which should I prioritize?",
-            "Show me sales performance by category"
+            "What are our recommended EOQ batch sizes?",
+            "Show me our inventory turnover metrics"
+        ]
+    elif intent in ("ECONOMIC_ORDER_QUANTITY", "INVENTORY_TURNOVER"):
+        followups = [
+            "What is our ABC Pareto classification?",
+            "Which products need attention today?",
+            "Who are our top suppliers by revenue?"
         ]
     elif intent == "PRODUCT_CATALOG_LOOKUP":
         followups = [
@@ -682,7 +818,7 @@ def generate_copilot_response(user_query: str) -> Dict[str, Any]:
         followups = [
             "Which products need attention today?",
             "What are our top 5 products by revenue?",
-            "If I can only reorder two products today, which should I prioritize?"
+            "What is our ABC inventory classification?"
         ]
 
     mode_label = "Gemini AI Synthesis" if mode == "gemini" else "Grounded Deterministic Mode"
