@@ -762,3 +762,8 @@ function escapeHtml(text) {
 function escapeQuote(text) {
     return text.replace(/'/g, "\\'");
 }
+
+// 1-Click Purchase Orders CSV Export
+function downloadPurchaseOrdersCsv() {
+    window.location.href = '/api/export/purchase-orders';
+}

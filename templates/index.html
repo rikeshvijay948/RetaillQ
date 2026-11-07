@@ -303,7 +303,12 @@
                             <option value="Healthy">🟢 Healthy Supply</option>
                         </select>
                     </div>
-                    <span id="inv-match-count" class="text-xs text-slate-400 self-end sm:self-center">Showing 25 of 25 products</span>
+                    <div class="flex items-center space-x-3 self-end sm:self-center">
+                        <span id="inv-match-count" class="text-xs text-slate-400">Showing 25 of 25 products</span>
+                        <a href="/api/export/purchase-orders" download="retailiq_purchase_orders.csv" class="inline-flex items-center px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all whitespace-nowrap">
+                            <i class="fa-solid fa-file-csv mr-1.5"></i> Export POs (CSV)
+                        </a>
+                    </div>
                 </div>
             </div>
 
@@ -334,7 +339,7 @@
 
         <!-- 3. STOCKOUT RISKS TAB -->
         <section id="tab-content-risks" class="tab-content hidden space-y-6">
-            <div class="bg-rose-950/20 border border-rose-500/30 rounded-xl p-5">
+            <div class="bg-rose-950/20 border border-rose-500/30 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div class="flex items-center space-x-3">
                     <div class="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
                         <i class="fa-solid fa-triangle-exclamation text-lg"></i>
@@ -344,6 +349,9 @@
                         <p class="text-xs text-rose-300">Deterministic detection of products with insufficient inventory runway to cover supplier lead time.</p>
                     </div>
                 </div>
+                <a href="/api/export/purchase-orders" download="retailiq_purchase_orders.csv" class="inline-flex items-center px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md transition-all whitespace-nowrap self-start sm:self-center">
+                    <i class="fa-solid fa-download mr-2"></i> Export Purchase Orders (CSV)
+                </a>
             </div>
 
             <!-- Risk Cards Grid -->
