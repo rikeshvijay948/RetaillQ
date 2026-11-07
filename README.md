@@ -130,6 +130,9 @@ All 34 tests run across Linux and Windows in continuous integration on every com
 | `GET` | `/api/top-products` | Top revenue-driving products (`limit` and `sort_by` params) |
 | `GET` | `/api/inventory` | Catalog of 25 products with computed DOI runway and ROP |
 | `GET` | `/api/inventory/summary` | High-level stock health score and total reorder valuation |
+| `GET` | `/api/inventory/abc` | Pareto ABC classification (Class A 70%, Class B 20%, Class C 10%) |
+| `GET` | `/api/inventory/eoq` | Economic Order Quantity (EOQ) optimization and order interval days |
+| `GET` | `/api/inventory/turnover` | Annualized inventory turnover ratio, DSI, and slow-moving stock analysis |
 | `GET` | `/api/risks` | Imminent stockout risk SKUs sorted by runway urgency |
 | `GET` | `/api/suppliers` | Supplier lead times, supplied SKUs, and risk exposure |
 | `GET` | `/api/export/purchase-orders` | Downloadable CSV purchase orders for products needing reorder |
@@ -143,6 +146,9 @@ All 34 tests run across Linux and Windows in continuous integration on every com
 - *"What are our top 5 products by revenue?"* → Returns exact #1 to #5 rankings with revenue and margins.
 - *"Which product has the highest revenue?"* → Details Ultra ANC Wireless Headphones ($22,798.48) with inventory alert.
 - *"If I can only reorder two products today, which should I prioritize?"* → Prioritizes items by runway depletion urgency.
+- *"What is our ABC inventory classification?"* → 70/20/10 Pareto breakdown with inventory control strategies.
+- *"What are our recommended EOQ batch sizes?"* → Wilson formula batch sizing balancing holding vs order costs.
+- *"What is our inventory turnover ratio and slow moving stock?"* → Turnover ratio ($35.65\times$), Days Sales of Inventory, and tied-up capital.
 - *"Who are our suppliers?"* → Summarizes supplier lead times, product volume, and risk exposure.
 - *"Do we sell iPhones?"* → Explicitly confirms item is not in the dataset (zero hallucination).
 
