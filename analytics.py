@@ -6,6 +6,7 @@ All facts are strictly verified and deterministic (Zero AI hallucination).
 
 import io
 import csv
+import math
 import sqlite3
 from typing import Dict, List, Any, Optional
 from database import get_db_connection
@@ -647,5 +648,165 @@ def get_inventory_health_summary() -> Dict[str, Any]:
         "total_suggested_reorder_cost": total_reorder_cost,
         "inventory_health_score_pct": round((len(healthy) / total_skus * 100), 1) if total_skus > 0 else 0.0
     }
+
+
+# -------------------------------------------------------------------------
+# 8. Advanced Inventory Optimization (ABC Pareto, EOQ, & Turnover)
+# -------------------------------------------------------------------------
+def get_abc_classification() -> Dict[str, Any]:
+    """
+    Performs Pareto (80/20) ABC Inventory Classification.
+    Ranks products by total revenue contribution:
+    - Class A: Top ~70% cumulative revenue (tightest control & highest strategic value)
+    - Class B: Next ~20% cumulative revenue (moderate control)
+    - Class C: Remaining ~10% cumulative revenue (routine periodic review)
+    """
+    products = get_top_products(limit=100, sort_by="revenue")
+    total_rev = sum(p["total_revenue"] for p in products)
+
+    cumulative_rev = 0.0
+    a_items, b_items, c_items = [], [], []
+
+    for p in products:
+        cumulative_rev += p["total_revenue"]
+        cum_pct = (cumulative_rev / total_rev * 100) if total_rev > 0 else 0.0
+        item_data = {
+            "product_id": p["product_id"],
+            "sku": p["sku"],
+            "name": p["name"],
+            "category": p["category"],
+            "revenue": p["total_revenue"],
+            "revenue_share_pct": round((p["total_revenue"] / total_rev * 100), 2) if total_rev > 0 else 0.0,
+            "cumulative_revenue_pct": round(cum_pct, 2),
+            "units_sold": p["total_units_sold"]
+        }
+
+        if cum_pct <= 70.0 or len(a_items) == 0:
+            item_data["abc_class"] = "A"
+            a_items.append(item_data)
+        elif cum_pct <= 90.0 or len(b_items) == 0:
+            item_data["abc_class"] = "B"
+            b_items.append(item_data)
+        else:
+            item_data["abc_class"] = "C"
+            c_items.append(item_data)
+
+    return {
+        "total_revenue": round(total_rev, 2),
+        "total_skus": len(products),
+        "summary": {
+            "class_a": {
+                "sku_count": len(a_items),
+                "sku_share_pct": round(len(a_items) / len(products) * 100, 1),
+                "revenue": round(sum(i["revenue"] for i in a_items), 2),
+                "revenue_share_pct": round(sum(i["revenue"] for i in a_items) / total_rev * 100, 1) if total_rev > 0 else 0.0,
+                "strategy": "Daily cycle counts, automated replenishment, strict safety stock."
+            },
+            "class_b": {
+                "sku_count": len(b_items),
+                "sku_share_pct": round(len(b_items) / len(products) * 100, 1),
+                "revenue": round(sum(i["revenue"] for i in b_items), 2),
+                "revenue_share_pct": round(sum(i["revenue"] for i in b_items) / total_rev * 100, 1) if total_rev > 0 else 0.0,
+                "strategy": "Weekly review, standard reorder point policies."
+            },
+            "class_c": {
+                "sku_count": len(c_items),
+                "sku_share_pct": round(len(c_items) / len(products) * 100, 1),
+                "revenue": round(sum(i["revenue"] for i in c_items), 2),
+                "revenue_share_pct": round(sum(i["revenue"] for i in c_items) / total_rev * 100, 1) if total_rev > 0 else 0.0,
+                "strategy": "Monthly bulk purchase orders, minimal buffer tracking."
+            }
+        },
+        "class_a_products": a_items,
+        "class_b_products": b_items,
+        "class_c_products": c_items
+    }
+
+
+def get_eoq_analysis(order_cost: float = 35.0, holding_rate: float = 0.20) -> List[Dict[str, Any]]:
+    """
+    Computes Economic Order Quantity (EOQ) and optimal ordering frequencies.
+    Formula: EOQ = sqrt((2 * Demand * Order_Cost) / (Holding_Cost_Per_Unit))
+    - order_cost: fixed administrative ordering cost per purchase order ($35 default)
+    - holding_rate: annual inventory carrying rate (20% default of unit cost)
+    """
+    health = get_inventory_health()
+    results = []
+
+    for item in health:
+        annual_demand = round(item["avg_daily_sales"] * 365, 0)
+        unit_cost = item["unit_cost"]
+        annual_holding_cost = max(0.50, round(unit_cost * holding_rate, 2))
+
+        if annual_demand > 0 and annual_holding_cost > 0:
+            eoq = round(math.sqrt((2 * annual_demand * order_cost) / annual_holding_cost), 0)
+            optimal_orders_per_year = round(annual_demand / eoq, 1) if eoq > 0 else 0.0
+            order_interval_days = round(365 / optimal_orders_per_year, 0) if optimal_orders_per_year > 0 else 0.0
+        else:
+            eoq = 0.0
+            optimal_orders_per_year = 0.0
+            order_interval_days = 0.0
+
+        results.append({
+            "product_id": item["product_id"],
+            "sku": item["sku"],
+            "name": item["name"],
+            "category": item["category"],
+            "unit_cost": unit_cost,
+            "avg_daily_sales": item["avg_daily_sales"],
+            "annualized_demand": annual_demand,
+            "eoq_units": int(eoq),
+            "optimal_orders_per_year": optimal_orders_per_year,
+            "order_interval_days": int(order_interval_days),
+            "current_stock": item["current_stock"],
+            "reorder_level": item["reorder_level"],
+            "risk_status": item["risk_status"]
+        })
+
+    return results
+
+
+def get_inventory_turnover() -> Dict[str, Any]:
+    """
+    Calculates inventory turnover ratios, Days Sales of Inventory (DSI),
+    and detects slow-moving / dead stock threats.
+    """
+    kpis = get_executive_kpis()
+    health = get_inventory_health()
+
+    total_cost_goods_sold = kpis.get("total_cost", 0.0)
+    inventory_val_cost = kpis.get("inventory_valuation_cost", 1.0)
+
+    turnover_30d = (total_cost_goods_sold / inventory_val_cost) if inventory_val_cost > 0 else 0.0
+    turnover_annual = round(turnover_30d * 12.0, 2)
+    dsi_days = round(365.0 / turnover_annual, 1) if turnover_annual > 0 else 0.0
+
+    slow_moving = [
+        {
+            "product_id": p["product_id"],
+            "sku": p["sku"],
+            "name": p["name"],
+            "category": p["category"],
+            "current_stock": p["current_stock"],
+            "unit_cost": p["unit_cost"],
+            "stock_value": round(p["current_stock"] * p["unit_cost"], 2),
+            "days_of_inventory": p["days_of_inventory"],
+            "avg_daily_sales": p["avg_daily_sales"]
+        }
+        for p in health
+        if p["days_of_inventory"] > 45.0 or (p["avg_daily_sales"] < 1.0 and p["current_stock"] > 30)
+    ]
+
+    return {
+        "period_cogs": total_cost_goods_sold,
+        "current_inventory_valuation": inventory_val_cost,
+        "annualized_inventory_turnover_ratio": turnover_annual,
+        "days_sales_of_inventory_dsi": dsi_days,
+        "turnover_benchmark": "Healthy (Target: 4-8x)" if turnover_annual >= 4.0 else "Needs Optimization",
+        "slow_moving_skus_count": len(slow_moving),
+        "slow_moving_capital_tied_up": round(sum(s["stock_value"] for s in slow_moving), 2),
+        "slow_moving_products": slow_moving
+    }
+
 
 
