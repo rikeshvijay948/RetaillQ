@@ -128,3 +128,35 @@ def test_api_copilot_chat(client):
     assert "evidence_metrics" in data
     assert len(data["evidence_metrics"]) == 4
     assert data["intent"] == "CRITICAL_INVENTORY_ATTENTION"
+
+
+def test_api_inventory_abc(client):
+    """GET /api/inventory/abc returns Pareto ABC inventory classification."""
+    res = client.get("/api/inventory/abc")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_skus"] == 25
+    assert "summary" in data
+    assert "class_a" in data["summary"]
+    assert "class_b" in data["summary"]
+    assert "class_c" in data["summary"]
+
+
+def test_api_inventory_eoq(client):
+    """GET /api/inventory/eoq returns Economic Order Quantity for all SKUs."""
+    res = client.get("/api/inventory/eoq")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 25
+    assert "eoq_units" in data[0]
+    assert "optimal_orders_per_year" in data[0]
+
+
+def test_api_inventory_turnover(client):
+    """GET /api/inventory/turnover returns turnover ratio and DSI."""
+    res = client.get("/api/inventory/turnover")
+    assert res.status_code == 200
+    data = res.json()
+    assert "annualized_inventory_turnover_ratio" in data
+    assert "days_sales_of_inventory_dsi" in data
+    assert "slow_moving_skus_count" in data

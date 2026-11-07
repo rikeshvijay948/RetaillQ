@@ -25,6 +25,9 @@ def test_intent_classification():
         ("Which product has the highest revenue?", "HIGHEST_REVENUE_PRODUCT"),
         ("If I can only reorder two products today, which should I prioritize?", "RESTOCK_PRIORITIZATION"),
         ("Who are our suppliers?", "SUPPLIER_PERFORMANCE"),
+        ("What is our ABC inventory classification?", "ABC_ANALYSIS"),
+        ("What is our optimal EOQ reorder quantity?", "ECONOMIC_ORDER_QUANTITY"),
+        ("What is our inventory turnover ratio?", "INVENTORY_TURNOVER"),
         ("Do we sell iPhones?", "PRODUCT_CATALOG_LOOKUP"),
         ("What is our category performance?", "CATEGORY_PERFORMANCE"),
         ("Show me daily sales trends", "SALES_TRENDS"),
@@ -36,6 +39,36 @@ def test_intent_classification():
         assert intent == expected_intent, f"Failed for query: '{query}' -> got '{intent}', expected '{expected_intent}'"
         assert len(func_name) > 0
         assert isinstance(context, dict)
+
+
+def test_abc_analysis_answer():
+    """Verify ABC analysis produces grounded Class A/B/C breakdown."""
+    res = copilot.generate_copilot_response("What is our ABC inventory classification?")
+    assert res["intent"] == "ABC_ANALYSIS"
+    assert "Pareto ABC Inventory Classification" in res["answer"]
+    assert "Class A" in res["answer"]
+    assert "Class B" in res["answer"]
+    assert "Class C" in res["answer"]
+    assert len(res["evidence_metrics"]) == 3
+
+
+def test_eoq_analysis_answer():
+    """Verify EOQ query produces optimal batch quantities."""
+    res = copilot.generate_copilot_response("What are our recommended EOQ batch sizes?")
+    assert res["intent"] == "ECONOMIC_ORDER_QUANTITY"
+    assert "Economic Order Quantity (EOQ) Optimization" in res["answer"]
+    assert len(res["evidence_metrics"]) == 5
+    for item in res["evidence_metrics"]:
+        assert "eoq_units" in item
+
+
+def test_inventory_turnover_answer():
+    """Verify inventory turnover returns DSI and velocity metrics."""
+    res = copilot.generate_copilot_response("What is our inventory turnover ratio and slow moving stock?")
+    assert res["intent"] == "INVENTORY_TURNOVER"
+    assert "Inventory Turnover & Velocity Metrics" in res["answer"]
+    assert "Days Sales of Inventory" in res["answer"]
+    assert len(res["evidence_metrics"]) == 4
 
 
 def test_iphone_zero_hallucination():

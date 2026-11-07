@@ -129,3 +129,58 @@ def test_generate_purchase_orders_csv():
     assert "Supplier_Name" in header
     assert "Suggested_Reorder_Qty" in header
     assert "Priority_Level" in header
+
+
+def test_abc_classification():
+    """Verify Pareto 70/20/10 ABC inventory classification logic and distribution."""
+    abc = analytics.get_abc_classification()
+    assert abc["total_skus"] == 25
+    assert abc["total_revenue"] > 100000.0
+
+    summary = abc["summary"]
+    assert "class_a" in summary
+    assert "class_b" in summary
+    assert "class_c" in summary
+
+    # Verify counts sum to 25
+    a_count = summary["class_a"]["sku_count"]
+    b_count = summary["class_b"]["sku_count"]
+    c_count = summary["class_c"]["sku_count"]
+    assert a_count + b_count + c_count == 25
+    assert a_count == 11
+    assert b_count == 6
+    assert c_count == 8
+
+    # Verify Class A generates the lion's share of revenue
+    assert summary["class_a"]["revenue_share_pct"] >= 65.0
+    assert len(abc["class_a_products"]) == a_count
+    assert len(abc["class_b_products"]) == b_count
+    assert len(abc["class_c_products"]) == c_count
+
+
+def test_eoq_analysis():
+    """Verify Wilson Economic Order Quantity calculations for all products."""
+    eoq_list = analytics.get_eoq_analysis(order_cost=35.0, holding_rate=0.20)
+    assert len(eoq_list) == 25
+    for item in eoq_list:
+        assert "sku" in item
+        assert "eoq_units" in item
+        assert "optimal_orders_per_year" in item
+        assert "order_interval_days" in item
+        assert item["eoq_units"] >= 0
+        assert item["annualized_demand"] >= 0
+        assert item["unit_cost"] > 0
+
+
+def test_inventory_turnover():
+    """Verify inventory turnover ratio, DSI, and slow-moving SKU detection."""
+    turnover = analytics.get_inventory_turnover()
+    assert "annualized_inventory_turnover_ratio" in turnover
+    assert "days_sales_of_inventory_dsi" in turnover
+    assert "slow_moving_skus_count" in turnover
+    assert "turnover_benchmark" in turnover
+
+    assert turnover["annualized_inventory_turnover_ratio"] > 10.0
+    assert turnover["days_sales_of_inventory_dsi"] > 0.0
+    assert turnover["slow_moving_skus_count"] >= 0
+    assert isinstance(turnover["slow_moving_products"], list)
