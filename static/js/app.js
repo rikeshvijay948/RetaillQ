@@ -80,14 +80,16 @@ async function loadDashboardData() {
     };
 
     try {
-        const [kpisRes, trendsRes, catRes, chanRes, topRes, invRes, risksRes] = await Promise.all([
+        const [kpisRes, trendsRes, catRes, chanRes, topRes, invRes, risksRes, gmroiRes, fcRes] = await Promise.all([
             safeFetch('/api/kpis'),
             safeFetch('/api/sales/trends'),
             safeFetch('/api/categories'),
             safeFetch('/api/channels'),
             safeFetch('/api/top-products'),
             safeFetch('/api/inventory'),
-            safeFetch('/api/risks')
+            safeFetch('/api/risks'),
+            safeFetch('/api/inventory/gmroi'),
+            safeFetch('/api/inventory/forecast')
         ]);
 
         if (kpisRes) renderKPIs(kpisRes);
@@ -101,6 +103,14 @@ async function loadDashboardData() {
             renderInventoryTable(rawInventoryData);
         }
         if (risksRes) renderRiskCards(risksRes);
+
+        if (gmroiRes && document.getElementById('inv-store-gmroi')) {
+            document.getElementById('inv-store-gmroi').textContent = `${gmroiRes.store_average_gmroi}x`;
+        }
+        if (fcRes && document.getElementById('inv-forecast-7d')) {
+            const rev = Math.round(fcRes.total_projected_revenue || 0);
+            document.getElementById('inv-forecast-7d').textContent = `$${rev.toLocaleString()}`;
+        }
 
     } catch (err) {
         console.error('Failed loading dashboard data:', err);

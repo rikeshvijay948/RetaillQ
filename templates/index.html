@@ -248,6 +248,14 @@
                                 <span>"Which products need urgent reorders?"</span>
                                 <i class="fa-solid fa-arrow-right text-[10px] text-slate-400"></i>
                             </button>
+                            <button onclick="askCopilotPrompt('What is our store GMROI performance and which are our Star products?')" class="w-full text-left text-xs bg-slate-800/90 hover:bg-indigo-600/30 border border-slate-700 px-3 py-2 rounded-lg text-slate-200 transition-all flex items-center justify-between">
+                                <span>"What is our GMROI & Star products?"</span>
+                                <i class="fa-solid fa-arrow-right text-[10px] text-slate-400"></i>
+                            </button>
+                            <button onclick="askCopilotPrompt('Forecast our demand and projected revenue for the next 7 days')" class="w-full text-left text-xs bg-slate-800/90 hover:bg-indigo-600/30 border border-slate-700 px-3 py-2 rounded-lg text-slate-200 transition-all flex items-center justify-between">
+                                <span>"7-Day demand & sales forecast?"</span>
+                                <i class="fa-solid fa-arrow-right text-[10px] text-slate-400"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -263,8 +271,8 @@
                         <h3 class="text-xl font-bold text-white">Inventory Intelligence & Stock Runway</h3>
                         <p class="text-xs text-slate-400">Deterministic Days of Inventory (DOI), Average Daily Sales (ADS), and Reorder Points (ROP)</p>
                     </div>
-                    <!-- Valuation Stats -->
-                    <div class="flex items-center space-x-4 text-xs">
+                    <!-- Valuation & Productivity Stats -->
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
                         <div class="bg-slate-900/80 border border-slate-700 px-3 py-2 rounded-lg">
                             <span class="text-slate-400 block">Total Catalog</span>
                             <strong id="inv-total-skus" class="text-white text-sm">25 SKUs</strong>
@@ -276,6 +284,14 @@
                         <div class="bg-slate-900/80 border border-slate-700 px-3 py-2 rounded-lg">
                             <span class="text-slate-400 block">Valuation (Cost)</span>
                             <strong id="inv-total-cost" class="text-emerald-400 text-sm">$0.00</strong>
+                        </div>
+                        <div class="bg-slate-900/80 border border-indigo-500/30 px-3 py-2 rounded-lg">
+                            <span class="text-indigo-400 block">Store GMROI</span>
+                            <strong id="inv-store-gmroi" class="text-indigo-300 text-sm">4.11x</strong>
+                        </div>
+                        <div class="bg-slate-900/80 border border-amber-500/30 px-3 py-2 rounded-lg">
+                            <span class="text-amber-400 block">7-Day Forecast</span>
+                            <strong id="inv-forecast-7d" class="text-amber-300 text-sm">$29,088</strong>
                         </div>
                     </div>
                 </div>
