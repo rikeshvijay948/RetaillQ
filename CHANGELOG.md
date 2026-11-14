@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-11-14
+
+### Added
+- **Gross Margin Return on Investment (GMROI) Matrix**:
+  - Implemented `analytics.get_gmroi_analysis()` computing product-level and store-level capital efficiency ($\frac{\text{Gross Margin \$}}{\text{Inventory Cost \$}}$).
+  - Categorizes all 25 catalog SKUs into 4 strategic quadrants: **Stars**, **Traffic Builders**, **Profit Generators**, and **Underperformers** using median thresholds ($3.22\text{x}$ GMROI, $\$3,999.20$ revenue).
+  - Computes category-level GMROI rankings (led by Groceries & Snacks at $6.35\text{x}$).
+  - Exposed via `GET /api/inventory/gmroi`.
+- **Predictive Demand Forecasting & Statistical Safety Stock**:
+  - Implemented `analytics.get_demand_forecast(horizon_days)` blending recent 7-day velocity (60%) with 30-day baseline pace (40%).
+  - Computes empirical daily demand standard deviation ($\sigma_d$) and statistical safety stock ($1.65 \times \sigma_d \times \sqrt{L}$ for 95% service level).
+  - Computes Gaussian CDF lead-time stockout probabilities, detecting products facing $>50\%$ stockout threat.
+  - Exposed via `GET /api/inventory/forecast`.
+- **Copilot Grounded Intent Routing**:
+  - Added dedicated intent classification and mathematical responses for `GMROI_ANALYSIS` and `DEMAND_FORECAST`.
+  - Added dynamic follow-up suggestions for forecasting and merchandising optimization.
+- **Dashboard UI Enhancements**:
+  - Added Store GMROI ($4.11\text{x}$) and 7-Day Revenue Forecast ($\$29,088$) badges to the Inventory Intelligence header.
+  - Added 1-click Copilot quick prompt buttons for GMROI and demand forecasting.
+- **Expanded Automated Test Suite**:
+  - Added unit and integration tests across `tests/test_analytics.py`, `tests/test_api.py`, and `tests/test_copilot.py`.
+  - Suite expanded from 43 to **49 automated tests (100% pass rate)**.
+
+---
+
 ## [1.1.0] - 2026-11-07
 
 ### Added

@@ -133,6 +133,8 @@ All 34 tests run across Linux and Windows in continuous integration on every com
 | `GET` | `/api/inventory/abc` | Pareto ABC classification (Class A 70%, Class B 20%, Class C 10%) |
 | `GET` | `/api/inventory/eoq` | Economic Order Quantity (EOQ) optimization and order interval days |
 | `GET` | `/api/inventory/turnover` | Annualized inventory turnover ratio, DSI, and slow-moving stock analysis |
+| `GET` | `/api/inventory/gmroi` | Gross Margin Return on Investment (GMROI) and 4-quadrant product matrix |
+| `GET` | `/api/inventory/forecast` | Predictive demand forecast, statistical safety stock, and stockout probability |
 | `GET` | `/api/risks` | Imminent stockout risk SKUs sorted by runway urgency |
 | `GET` | `/api/suppliers` | Supplier lead times, supplied SKUs, and risk exposure |
 | `GET` | `/api/export/purchase-orders` | Downloadable CSV purchase orders for products needing reorder |
@@ -146,6 +148,8 @@ All 34 tests run across Linux and Windows in continuous integration on every com
 - *"What are our top 5 products by revenue?"* → Returns exact #1 to #5 rankings with revenue and margins.
 - *"Which product has the highest revenue?"* → Details Ultra ANC Wireless Headphones ($22,798.48) with inventory alert.
 - *"If I can only reorder two products today, which should I prioritize?"* → Prioritizes items by runway depletion urgency.
+- *"What is our store GMROI performance?"* → Returns store GMROI ($4.11\text{x}$) and 4-quadrant product productivity matrix.
+- *"Forecast our demand for the next 7 days"* → 7-day projected revenue ($\$29,088$), volume, and stockout threats.
 - *"What is our ABC inventory classification?"* → 70/20/10 Pareto breakdown with inventory control strategies.
 - *"What are our recommended EOQ batch sizes?"* → Wilson formula batch sizing balancing holding vs order costs.
 - *"What is our inventory turnover ratio and slow moving stock?"* → Turnover ratio ($35.65\times$), Days Sales of Inventory, and tied-up capital.
