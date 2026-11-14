@@ -146,6 +146,18 @@ async def get_inventory_turnover():
     return analytics.get_inventory_turnover()
 
 
+@app.get("/api/inventory/gmroi")
+async def get_gmroi_analysis():
+    """Returns Gross Margin Return on Investment (GMROI) and 4-quadrant product matrix."""
+    return analytics.get_gmroi_analysis()
+
+
+@app.get("/api/inventory/forecast")
+async def get_demand_forecast(days: int = 7):
+    """Returns predictive demand forecasts, dynamic statistical safety stocks, and stockout probabilities."""
+    return analytics.get_demand_forecast(horizon_days=days)
+
+
 @app.get("/api/export/purchase-orders")
 async def export_purchase_orders():
     """Generates and downloads an RFC 4180-compliant CSV containing purchase orders for items needing replenishment."""

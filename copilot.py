@@ -178,7 +178,29 @@ def classify_intent(query: str) -> Tuple[str, str, Dict[str, Any]]:
         }
         return intent, func_name, context
 
-    # 9. PRODUCT CATALOG LOOKUP (Specific product existence or inquiry)
+    # 9. GMROI & INVENTORY PRODUCTIVITY MATRIX
+    if any(k in q for k in ["gmroi", "gross margin return", "inventory productivity", "star product", "traffic builder", "profit generator", "underperformer"]):
+        intent = "GMROI_ANALYSIS"
+        func_name = "analytics.get_gmroi_analysis()"
+        gmroi_data = analytics.get_gmroi_analysis()
+        context = {
+            "intent": intent,
+            "gmroi_analysis": gmroi_data
+        }
+        return intent, func_name, context
+
+    # 10. PREDICTIVE DEMAND FORECAST & SAFETY STOCK
+    if any(k in q for k in ["forecast", "predict", "projected sales", "projected revenue", "next 7 days", "next week", "demand forecast", "safety stock calculation"]):
+        intent = "DEMAND_FORECAST"
+        func_name = "analytics.get_demand_forecast(horizon_days=7)"
+        forecast_data = analytics.get_demand_forecast(horizon_days=7)
+        context = {
+            "intent": intent,
+            "forecast_data": forecast_data
+        }
+        return intent, func_name, context
+
+    # 11. PRODUCT CATALOG LOOKUP (Specific product existence or inquiry)
     candidate_name = extract_potential_product_name(query)
     if candidate_name or any(k in q for k in ["sell", "iphone", "iphones", "have", "stock of", "details for", "tell me about", "find product", "search for"]):
         prod_query = candidate_name if candidate_name else ("iPhone" if "iphone" in q else query)
@@ -677,7 +699,75 @@ def build_deterministic_answer(user_query: str, intent: str, verified_context: D
             "mode": "deterministic_fallback"
         }
 
-    # 12. DEFAULT: EXECUTIVE OVERVIEW
+    # 12. INTENT: GMROI_ANALYSIS
+    if intent == "GMROI_ANALYSIS":
+        gmroi_data = verified_context.get("gmroi_analysis") or analytics.get_gmroi_analysis()
+        store_gmroi = gmroi_data["store_average_gmroi"]
+        q_counts = gmroi_data["quadrant_counts"]
+        stars = gmroi_data["quadrants"]["stars"]
+        top_stars = [f"- **{p['name']}** (`{p['sku']}`): GMROI = **{p['gmroi']}x** (${p['profit']:,.2f} profit on ${p['inventory_valuation_cost']:,.2f} stock)" for p in stars[:3]]
+
+        answer = (
+            f"### 💎 Gross Margin Return on Investment (GMROI) Analysis\n\n"
+            f"- **Store Average GMROI:** **{store_gmroi}x** (Every $1.00 invested in inventory generates **${store_gmroi:.2f}** in gross profit)\n"
+            f"- **Product Productivity Matrix:**\n"
+            f"  * 🌟 **Stars ({q_counts['stars']} SKUs):** High Revenue & High GMROI — core profit engines.\n"
+            f"  * 🛒 **Traffic Builders ({q_counts['traffic_builders']} SKUs):** High Volume, Lower Return — price optimization targets.\n"
+            f"  * 💰 **Profit Generators ({q_counts['profit_generators']} SKUs):** Low Volume, High Efficiency — candidates for promotional scaling.\n"
+            f"  * ⚠️ **Underperformers ({q_counts['underperformers']} SKUs):** Low Volume & Low Return — review for discounting or phase-out.\n\n"
+            f"**Top Star SKUs:**\n"
+            + "\n".join(top_stars)
+        )
+        evidence = [
+            {"metric": "Store Average GMROI", "value": f"{store_gmroi}x"},
+            {"quadrant": "Stars", "skus": q_counts["stars"]},
+            {"quadrant": "Traffic Builders", "skus": q_counts["traffic_builders"]},
+            {"quadrant": "Profit Generators", "skus": q_counts["profit_generators"]},
+            {"quadrant": "Underperformers", "skus": q_counts["underperformers"]}
+        ]
+        recommendation = "Maintain safety stock on Star products and negotiate vendor price reductions for Traffic Builders."
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "recommendation": recommendation,
+            "confidence": "HIGH",
+            "mode": "deterministic_fallback"
+        }
+
+    # 13. INTENT: DEMAND_FORECAST
+    if intent == "DEMAND_FORECAST":
+        forecast_data = verified_context.get("forecast_data") or analytics.get_demand_forecast(7)
+        h = forecast_data["forecast_horizon_days"]
+        proj_rev = forecast_data["total_projected_revenue"]
+        proj_units = forecast_data["total_projected_units"]
+        high_risk_count = forecast_data["high_stockout_risk_skus_count"]
+        top_items = forecast_data.get("top_forecast_revenue_drivers", [])[:3]
+        top_lines = [f"- **{p['name']}**: Projected {p['forecast_units']} units (**${p['forecast_revenue']:,.2f}**)" for p in top_items]
+
+        answer = (
+            f"### 🔮 {h}-Day Predictive Demand Forecast\n\n"
+            f"Exponentially smoothed demand projection blending recent 7-day velocity (60%) with 30-day baseline (40%):\n\n"
+            f"- **Total Projected Store Revenue ({h} Days):** **${proj_rev:,.2f}**\n"
+            f"- **Total Projected Volume:** **{proj_units:,} units**\n"
+            f"- **Imminent Stockout Risk Threat:** **{high_risk_count} SKUs** have $>50\%$ probability of stockout during supplier lead time.\n\n"
+            f"**Projected Top Revenue Drivers:**\n"
+            + "\n".join(top_lines)
+        )
+        evidence = [
+            {"metric": f"Projected {h}d Revenue", "value": f"${proj_rev:,.2f}"},
+            {"metric": f"Projected {h}d Units", "value": f"{proj_units:,}"},
+            {"metric": "High Stockout Risk SKUs (>50%)", "value": high_risk_count}
+        ]
+        recommendation = f"Issue emergency restock orders for the {high_risk_count} SKUs with imminent lead-time stockout probabilities."
+        return {
+            "answer": answer,
+            "evidence": evidence,
+            "recommendation": recommendation,
+            "confidence": "HIGH",
+            "mode": "deterministic_fallback"
+        }
+
+    # 14. DEFAULT: EXECUTIVE OVERVIEW
     metrics = verified_context.get("dashboard_metrics") or analytics.get_dashboard_metrics()
     top_p = verified_context.get("top_product") or analytics.get_top_products(limit=1)[0]
     crit_count = verified_context.get("critical_risks_count", 4)
@@ -793,20 +883,26 @@ def generate_copilot_response(user_query: str) -> Dict[str, Any]:
     if intent in ("RESTOCK_PRIORITIZATION", "CRITICAL_INVENTORY_ATTENTION"):
         followups = [
             "What are our top 5 products by revenue?",
-            "What is our ABC inventory classification?",
-            "What are our recommended EOQ batch sizes?"
+            "What is our 7-day demand forecast?",
+            "What is our store GMROI performance?"
         ]
     elif intent in ("TOP_PRODUCTS_RANKING", "HIGHEST_REVENUE_PRODUCT", "ABC_ANALYSIS"):
         followups = [
             "Which products need attention today?",
-            "What are our recommended EOQ batch sizes?",
-            "Show me our inventory turnover metrics"
+            "What is our GMROI performance by category?",
+            "What is our 7-day demand forecast?"
         ]
     elif intent in ("ECONOMIC_ORDER_QUANTITY", "INVENTORY_TURNOVER"):
         followups = [
             "What is our ABC Pareto classification?",
+            "What is our 7-day demand forecast?",
+            "What are our Star products by GMROI?"
+        ]
+    elif intent in ("GMROI_ANALYSIS", "DEMAND_FORECAST"):
+        followups = [
             "Which products need attention today?",
-            "Who are our top suppliers by revenue?"
+            "What are our recommended EOQ batch sizes?",
+            "What is our ABC inventory classification?"
         ]
     elif intent == "PRODUCT_CATALOG_LOOKUP":
         followups = [
@@ -817,8 +913,8 @@ def generate_copilot_response(user_query: str) -> Dict[str, Any]:
     else:
         followups = [
             "Which products need attention today?",
-            "What are our top 5 products by revenue?",
-            "What is our ABC inventory classification?"
+            "What is our store GMROI performance?",
+            "What is our 7-day demand forecast?"
         ]
 
     mode_label = "Gemini AI Synthesis" if mode == "gemini" else "Grounded Deterministic Mode"
