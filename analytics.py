@@ -952,4 +952,136 @@ def get_gmroi_analysis() -> Dict[str, Any]:
     }
 
 
+# -------------------------------------------------------------------------
+# 10. Predictive Demand Forecasting & Statistical Safety Stock Engine
+# -------------------------------------------------------------------------
+def _normal_cdf(z: float) -> float:
+    """Calculates cumulative distribution function for standard normal distribution."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def get_demand_forecast(horizon_days: int = 7) -> Dict[str, Any]:
+    """
+    Computes forward-looking demand forecasts, dynamic statistical safety stocks,
+    and lead-time stockout probabilities for all catalog products.
+
+    - Uses exponentially weighted blend of recent 7-day velocity (60%) and 30-day baseline (40%).
+    - Computes empirical daily demand standard deviation (sigma_d).
+    - Statistical Safety Stock: Z(95%) * sigma_d * sqrt(Lead_Time) where Z = 1.65.
+    - Stockout Risk Probability: Gaussian CDF evaluation of lead time stock coverage.
+    """
+    if horizon_days <= 0:
+        horizon_days = 7
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT id, sku, name, category, unit_cost, selling_price, current_stock, lead_time_days, supplier_name
+        FROM products
+        ORDER BY id ASC
+    """)
+    products = [dict(r) for r in cur.fetchall()]
+
+    forecasted_products = []
+    total_proj_units = 0
+    total_proj_revenue = 0.0
+
+    for p in products:
+        p_id = p["id"]
+        cur.execute("""
+            SELECT date, COALESCE(SUM(quantity_sold), 0) as units
+            FROM sales
+            WHERE product_id = ?
+            GROUP BY date
+            ORDER BY date ASC
+        """, (p_id,))
+        daily_records = [r["units"] for r in cur.fetchall()]
+
+        n_days = len(daily_records)
+        mean_30d = (sum(daily_records) / n_days) if n_days > 0 else 0.0
+
+        # Sample standard deviation of daily sales (sigma_d)
+        if n_days > 1:
+            variance = sum((x - mean_30d) ** 2 for x in daily_records) / (n_days - 1)
+            sigma_d = round(math.sqrt(variance), 2)
+        else:
+            sigma_d = 0.5
+
+        # Recent 7-day velocity
+        recent_7 = daily_records[-7:] if n_days >= 7 else daily_records
+        mean_7d = (sum(recent_7) / len(recent_7)) if recent_7 else mean_30d
+
+        # Exponentially smoothed pace: 60% recent velocity + 40% monthly baseline
+        smoothed_daily_pace = round((0.60 * mean_7d) + (0.40 * mean_30d), 2)
+        momentum = round((mean_7d / mean_30d), 2) if mean_30d > 0 else 1.0
+
+        # Horizon projections
+        projected_units = max(0, int(round(smoothed_daily_pace * horizon_days)))
+        projected_revenue = round(projected_units * p["selling_price"], 2)
+
+        total_proj_units += projected_units
+        total_proj_revenue += projected_revenue
+
+        # Statistical Safety Stock (95% Service Level SLA: Z = 1.65)
+        lead_time = max(1, p["lead_time_days"])
+        stat_safety_stock = max(1, int(round(1.65 * sigma_d * math.sqrt(lead_time))))
+
+        # Lead time demand & stockout probability
+        lead_time_demand = round(mean_30d * lead_time, 1)
+        sigma_lead_time = max(0.5, sigma_d * math.sqrt(lead_time))
+        current_stock = p["current_stock"]
+
+        # Z-score for current stock coverage during replenishment window
+        z_score = (current_stock - lead_time_demand) / sigma_lead_time
+        stockout_prob_pct = round(max(0.0, min(100.0, (1.0 - _normal_cdf(z_score)) * 100.0)), 1)
+
+        is_under_buffered = current_stock < stat_safety_stock
+        target_reorder_qty = max(0, int(round(lead_time_demand + stat_safety_stock - current_stock)))
+
+        forecasted_products.append({
+            "product_id": p_id,
+            "sku": p["sku"],
+            "name": p["name"],
+            "category": p["category"],
+            "supplier_name": p["supplier_name"],
+            "unit_cost": p["unit_cost"],
+            "selling_price": p["selling_price"],
+            "current_stock": current_stock,
+            "lead_time_days": lead_time,
+            "baseline_daily_pace": round(mean_30d, 2),
+            "recent_7d_pace": round(mean_7d, 2),
+            "smoothed_daily_pace": smoothed_daily_pace,
+            "demand_momentum": momentum,
+            "daily_sales_std_dev": sigma_d,
+            "forecast_horizon_days": horizon_days,
+            "forecast_units": projected_units,
+            "forecast_revenue": projected_revenue,
+            "lead_time_demand": lead_time_demand,
+            "statistical_safety_stock": stat_safety_stock,
+            "stockout_probability_pct": stockout_prob_pct,
+            "is_under_buffered": is_under_buffered,
+            "suggested_reorder_qty": target_reorder_qty
+        })
+
+    conn.close()
+
+    # Sort products by stockout probability descending, then revenue impact
+    forecasted_products.sort(key=lambda x: (-x["stockout_probability_pct"], -x["forecast_revenue"]))
+
+    high_risk_count = sum(1 for p in forecasted_products if p["stockout_probability_pct"] >= 50.0)
+    under_buffered_count = sum(1 for p in forecasted_products if p["is_under_buffered"])
+
+    return {
+        "forecast_horizon_days": horizon_days,
+        "total_catalog_skus": len(forecasted_products),
+        "total_projected_units": total_proj_units,
+        "total_projected_revenue": round(total_proj_revenue, 2),
+        "high_stockout_risk_skus_count": high_risk_count,
+        "under_buffered_skus_count": under_buffered_count,
+        "top_forecast_revenue_drivers": sorted(forecasted_products, key=lambda x: x["forecast_revenue"], reverse=True)[:5],
+        "products": forecasted_products
+    }
+
+
 
