@@ -809,4 +809,147 @@ def get_inventory_turnover() -> Dict[str, Any]:
     }
 
 
+# -------------------------------------------------------------------------
+# 9. GMROI & Inventory Productivity Matrix
+# -------------------------------------------------------------------------
+def get_gmroi_analysis() -> Dict[str, Any]:
+    """
+    Computes Gross Margin Return on Investment (GMROI) and product quadrant categorization.
+    GMROI = Gross Margin ($) / Average Inventory Cost ($)
+    Measures how many gross profit dollars each dollar invested in inventory yields.
+
+    Quadrant Classification (2x2 Matrix using Median Revenue and Median GMROI):
+    - Stars (High Revenue, High GMROI): Premier cash engines; maintain 100% in-stock.
+    - Traffic Builders (High Revenue, Low GMROI): High customer velocity; optimize pricing/margins.
+    - Profit Generators (Low Revenue, High GMROI): Highly efficient margins; boost marketing & prominence.
+    - Underperformers (Low Revenue, Low GMROI): Weak velocity and low return; bundle, discount, or phase out.
+    """
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT 
+            p.id, p.sku, p.name, p.category, p.unit_cost, p.selling_price, p.current_stock,
+            COALESCE(SUM(s.revenue), 0.0) as revenue,
+            COALESCE(SUM(s.profit), 0.0) as profit,
+            COALESCE(SUM(s.quantity_sold), 0) as units_sold
+        FROM products p
+        LEFT JOIN sales s ON p.id = s.product_id
+        GROUP BY p.id
+        ORDER BY revenue DESC
+    """)
+    rows = [dict(r) for r in cur.fetchall()]
+    conn.close()
+
+    if not rows:
+        return {"total_skus": 0, "store_gmroi": 0.0, "quadrants": {}, "products": []}
+
+    # Calculate baseline metrics for each product
+    analyzed_items = []
+    total_store_profit = sum(r["profit"] for r in rows)
+    total_store_inv_cost = sum(r["current_stock"] * r["unit_cost"] for r in rows)
+    store_gmroi = round(total_store_profit / total_store_inv_cost, 2) if total_store_inv_cost > 0 else 0.0
+
+    for r in rows:
+        inv_cost = max(10.0, round(r["current_stock"] * r["unit_cost"], 2))
+        profit = round(r["profit"], 2)
+        revenue = round(r["revenue"], 2)
+        gmroi = round(profit / inv_cost, 2)
+        annualized_gmroi = round(gmroi * (365.0 / 30.0), 2)
+        margin_pct = round((profit / revenue * 100), 1) if revenue > 0 else 0.0
+
+        analyzed_items.append({
+            "product_id": r["id"],
+            "sku": r["sku"],
+            "name": r["name"],
+            "category": r["category"],
+            "unit_cost": r["unit_cost"],
+            "selling_price": r["selling_price"],
+            "current_stock": r["current_stock"],
+            "inventory_valuation_cost": inv_cost,
+            "units_sold": r["units_sold"],
+            "revenue": revenue,
+            "profit": profit,
+            "margin_pct": margin_pct,
+            "gmroi": gmroi,
+            "annualized_gmroi": annualized_gmroi,
+        })
+
+    # Medians for 2x2 matrix thresholding
+    sorted_rev = sorted([item["revenue"] for item in analyzed_items])
+    sorted_gmroi = sorted([item["gmroi"] for item in analyzed_items])
+    median_revenue = sorted_rev[len(sorted_rev) // 2]
+    median_gmroi = sorted_gmroi[len(sorted_gmroi) // 2]
+
+    stars = []
+    traffic_builders = []
+    profit_generators = []
+    underperformers = []
+
+    for item in analyzed_items:
+        is_high_rev = item["revenue"] >= median_revenue
+        is_high_gmroi = item["gmroi"] >= median_gmroi
+
+        if is_high_rev and is_high_gmroi:
+            item["quadrant"] = "Star"
+            item["action"] = "Core profit driver; protect safety stock and prioritize prime shelf placement."
+            stars.append(item)
+        elif is_high_rev and not is_high_gmroi:
+            item["quadrant"] = "Traffic Builder"
+            item["action"] = "High sales pace with lower capital return; explore modest price increase or supplier discounts."
+            traffic_builders.append(item)
+        elif not is_high_rev and is_high_gmroi:
+            item["quadrant"] = "Profit Generator"
+            item["action"] = "High capital efficiency; boost promotional visibility and cross-selling bundles."
+            profit_generators.append(item)
+        else:
+            item["quadrant"] = "Underperformer"
+            item["action"] = "Sub-median sales and return; evaluate discount promotion, bundle liquidation, or phase-out."
+            underperformers.append(item)
+
+    # Category GMROI summary
+    categories_dict: Dict[str, Dict[str, Any]] = {}
+    for item in analyzed_items:
+        cat = item["category"]
+        if cat not in categories_dict:
+            categories_dict[cat] = {"category": cat, "profit": 0.0, "inv_cost": 0.0, "product_count": 0}
+        categories_dict[cat]["profit"] += item["profit"]
+        categories_dict[cat]["inv_cost"] += item["inventory_valuation_cost"]
+        categories_dict[cat]["product_count"] += 1
+
+    category_gmroi = []
+    for cat_data in categories_dict.values():
+        c_profit = cat_data["profit"]
+        c_inv = cat_data["inv_cost"]
+        c_gmroi = round(c_profit / c_inv, 2) if c_inv > 0 else 0.0
+        category_gmroi.append({
+            "category": cat_data["category"],
+            "gmroi": c_gmroi,
+            "product_count": cat_data["product_count"],
+            "total_profit": round(c_profit, 2),
+            "total_inv_cost": round(c_inv, 2)
+        })
+    category_gmroi.sort(key=lambda x: x["gmroi"], reverse=True)
+
+    return {
+        "total_skus": len(analyzed_items),
+        "store_average_gmroi": store_gmroi,
+        "median_revenue_threshold": round(median_revenue, 2),
+        "median_gmroi_threshold": round(median_gmroi, 2),
+        "quadrant_counts": {
+            "stars": len(stars),
+            "traffic_builders": len(traffic_builders),
+            "profit_generators": len(profit_generators),
+            "underperformers": len(underperformers)
+        },
+        "quadrants": {
+            "stars": stars,
+            "traffic_builders": traffic_builders,
+            "profit_generators": profit_generators,
+            "underperformers": underperformers
+        },
+        "category_gmroi": category_gmroi,
+        "all_products": analyzed_items
+    }
+
+
 
