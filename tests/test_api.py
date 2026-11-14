@@ -160,3 +160,24 @@ def test_api_inventory_turnover(client):
     assert "annualized_inventory_turnover_ratio" in data
     assert "days_sales_of_inventory_dsi" in data
     assert "slow_moving_skus_count" in data
+
+
+def test_api_inventory_gmroi(client):
+    """GET /api/inventory/gmroi returns GMROI matrix and quadrants."""
+    res = client.get("/api/inventory/gmroi")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total_skus"] == 25
+    assert "store_average_gmroi" in data
+    assert "quadrants" in data
+    assert len(data["quadrants"]["stars"]) > 0
+
+
+def test_api_inventory_forecast(client):
+    """GET /api/inventory/forecast returns forward demand and safety stock."""
+    res = client.get("/api/inventory/forecast?days=7")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["forecast_horizon_days"] == 7
+    assert data["total_projected_revenue"] > 10000.0
+    assert len(data["products"]) == 25

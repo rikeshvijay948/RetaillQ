@@ -184,3 +184,52 @@ def test_inventory_turnover():
     assert turnover["days_sales_of_inventory_dsi"] > 0.0
     assert turnover["slow_moving_skus_count"] >= 0
     assert isinstance(turnover["slow_moving_products"], list)
+
+
+def test_gmroi_analysis():
+    """Verify GMROI profitability matrix and quadrant distributions."""
+    gmroi_res = analytics.get_gmroi_analysis()
+    assert gmroi_res["total_skus"] == 25
+    assert gmroi_res["store_average_gmroi"] > 0.0
+
+    counts = gmroi_res["quadrant_counts"]
+    assert "stars" in counts
+    assert "traffic_builders" in counts
+    assert "profit_generators" in counts
+    assert "underperformers" in counts
+    total_quadrants = counts["stars"] + counts["traffic_builders"] + counts["profit_generators"] + counts["underperformers"]
+    assert total_quadrants == 25
+
+    # Check categories breakdown
+    cat_gmroi = gmroi_res["category_gmroi"]
+    assert len(cat_gmroi) == 5
+    for cat in cat_gmroi:
+        assert cat["gmroi"] > 0.0
+
+    # Check individual product fields
+    for p in gmroi_res["all_products"]:
+        assert "gmroi" in p
+        assert "quadrant" in p
+        assert "action" in p
+
+
+def test_demand_forecast():
+    """Verify predictive demand forecasting and statistical safety stock logic."""
+    fc_7 = analytics.get_demand_forecast(horizon_days=7)
+    assert fc_7["forecast_horizon_days"] == 7
+    assert fc_7["total_catalog_skus"] == 25
+    assert fc_7["total_projected_revenue"] > 15000.0
+    assert fc_7["total_projected_units"] > 500
+    assert fc_7["high_stockout_risk_skus_count"] == 4
+
+    # Test 14-day scaling
+    fc_14 = analytics.get_demand_forecast(horizon_days=14)
+    assert fc_14["forecast_horizon_days"] == 14
+    assert fc_14["total_projected_units"] > fc_7["total_projected_units"]
+
+    # Verify per-product statistical safety stock and risk probabilities
+    for p in fc_7["products"]:
+        assert p["statistical_safety_stock"] >= 1
+        assert 0.0 <= p["stockout_probability_pct"] <= 100.0
+        assert p["lead_time_days"] >= 1
+        assert p["daily_sales_std_dev"] >= 0.0

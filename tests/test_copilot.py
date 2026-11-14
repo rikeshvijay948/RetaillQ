@@ -28,6 +28,8 @@ def test_intent_classification():
         ("What is our ABC inventory classification?", "ABC_ANALYSIS"),
         ("What is our optimal EOQ reorder quantity?", "ECONOMIC_ORDER_QUANTITY"),
         ("What is our inventory turnover ratio?", "INVENTORY_TURNOVER"),
+        ("What is our store GMROI performance?", "GMROI_ANALYSIS"),
+        ("Forecast our demand for the next 7 days", "DEMAND_FORECAST"),
         ("Do we sell iPhones?", "PRODUCT_CATALOG_LOOKUP"),
         ("What is our category performance?", "CATEGORY_PERFORMANCE"),
         ("Show me daily sales trends", "SALES_TRENDS"),
@@ -69,6 +71,24 @@ def test_inventory_turnover_answer():
     assert "Inventory Turnover & Velocity Metrics" in res["answer"]
     assert "Days Sales of Inventory" in res["answer"]
     assert len(res["evidence_metrics"]) == 4
+
+
+def test_copilot_gmroi_answer():
+    """Verify GMROI query returns quadrant breakdown and recommendations."""
+    res = copilot.generate_copilot_response("What is our store GMROI performance?")
+    assert res["intent"] == "GMROI_ANALYSIS"
+    assert "Gross Margin Return on Investment" in res["answer"]
+    assert "Stars" in res["answer"]
+    assert len(res["evidence_metrics"]) >= 4
+
+
+def test_copilot_demand_forecast_answer():
+    """Verify demand forecast query returns projected revenue and stockout risk."""
+    res = copilot.generate_copilot_response("Forecast our demand for the next 7 days")
+    assert res["intent"] == "DEMAND_FORECAST"
+    assert "Predictive Demand Forecast" in res["answer"]
+    assert "Projected Store Revenue" in res["answer"]
+    assert len(res["evidence_metrics"]) == 3
 
 
 def test_iphone_zero_hallucination():
